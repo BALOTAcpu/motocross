@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Motocross Motion MVP</title>
+
+<style>
+html,body{
+    margin:0;
+    padding:0;
+    width:100%;
+    height:100%;
+    background:#111;
+    overflow:hidden;
+}
+#start{
+    position:absolute;
+    inset:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    z-index:10;
+}
+button{
+    padding:18px 30px;
+    font-size:20px;
+    background:#ff6600;
+    border:none;
+    border-radius:10px;
+    color:white;
+}
+#hud{
+    position:absolute;
+    top:15px;
+    left:15px;
+    color:white;
+    font-family:Arial;
+    z-index:5;
+}
+canvas{
+    display:block;
+}
+</style>
+</head>
+
+<body>
+
+<div id="start">
+    <button id="btn">Iniciar</button>
+</div>
+
+<div id="hud">Score: 0</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ESTADO
+let running=false;
+let score=0;
+
+// SENSOR
+let gamma=0;
+let neutral=0;
+let accelZ=0;
+
+// MOTO
+let bike={
+    x:()=>canvas.width/2,
+    y:canvas.height*0.7,
+    vy:0,
+    angle:0,
+    rot:0,
+    air:false
+};
+
+document.getElementById("btn").onclick = async ()=>{
+    if (typeof DeviceMotionEvent?.requestPermission === "function"){
+        const p = await DeviceMotionEvent.requestPermission();
+        if(p!=="granted") return alert("Permissão negada");
+    }
+    document.getElementById("start").style.display="none";
+    start();
+};
+
+function start(){
+    running=true;
+
+    window.addEventListener("deviceorientation",e=>{
+        gamma = e.gamma - neutral;
+    });
+
+    window.addEventListener("devicemotion",e=>{
+        accelZ = e.accelerationIncludingGravity.z;
+    });
+
+    setTimeout(()=>neutral=gamma,300);
+    loop();
+}
+
+function loop(){
+    if(!running) return;
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+let ramp=false, t=0;
+
+function update(){
+    score+=1;
+    document.getElementById("hud").innerText="Score: "+score;
+
+    bike.angle = gamma*0.03;
+    if(Math.abs(bike.angle)>0.9) end();
+
+    t++;
+    ramp = t%300>240;
+
+    if(!bike.air && ramp && accelZ<-12){
+        bike.vy=-14;
+        bike.air=true;
+    }
+
+    if(bike.air){
+        bike.vy+=0.9;
+        bike.y+=bike.vy;
+
+        if(gamma>10) bike.rot+=0.05;
+        if(gamma<-10) bike.rot-=0.05;
+
+        if(bike.y>=canvas.height*0.7){
+            bike.y=canvas.height*0.7;
+            bike.air=false;
+            if(Math.abs(bike.rot)>0.7) end();
+            bike.rot=0;
+        }
+    }
+}
+
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="#444";
+    ctx.fillRect(0,canvas.height*0.75,canvas.width,10);
+
+    if(ramp){
+        ctx.fillStyle="#ff6600";
+        ctx.fillRect(canvas.width/2-40,canvas.height*0.72,80,8);
+    }
+
+    ctx.save();
+    ctx.translate(bike.x(),bike.y);
+    ctx.rotate(bike.angle+bike.rot);
+    ctx.fillStyle="white";
+    ctx.fillRect(-25,-10,50,20);
+    ctx.restore();
+}
+
+function end(){
+    running=false;
+    alert("Game Over | Score: "+score);
+    location.reload();
+}
+</script>
+
+</body>
+</html>
