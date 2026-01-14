@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Motocross Motion – Rampa Real</title>
+
+<style>
+html,body{
+    margin:0;
+    padding:0;
+    width:100%;
+    height:100%;
+    background:#111;
+    overflow:hidden;
+    font-family:Arial, sans-serif;
+}
+#start{
+    position:absolute;
+    inset:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    z-index:10;
+}
+button{
+    padding:18px 30px;
+    font-size:20px;
+    background:#ff6600;
+    border:none;
+    border-radius:10px;
+    color:white;
+}
+#hud{
+    position:absolute;
+    top:15px;
+    left:15px;
+    color:white;
+    z-index:5;
+}
+canvas{ display:block; }
+</style>
+</head>
+
+<body>
+
+<div id="start">
+    <button id="btn">Iniciar</button>
+</div>
+
+<div id="hud">Score: 0</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ================== ESTADO ==================
+let running=false;
+let score=0;
+
+// ================== SENSOR ==================
+let gamma=0;
+let neutral=0;
+let accelZ=0;
+
+// ================== TERRENO ==================
+const groundY = ()=>canvas.height*0.75;
+
+// rampa real
+const ramp = {
+    x: canvas.width/2 - 120,
+    width: 240,
+    height: 60   // quanto sobe
+};
+
+// ================== MOTO ==================
+const bike = {
+    x: ()=>canvas.width/2,
+    y: groundY(),
+    vy: 0,
+    angle: 0,
+    rot: 0,
+    air: false
+};
+
+// ================== START ==================
+document.getElementById("btn").onclick = async ()=>{
+    if (typeof DeviceMotionEvent?.requestPermission === "function"){
+        const p = await DeviceMotionEvent.requestPermission();
+        if(p!=="granted") return alert("Permissão negada");
+    }
+    document.getElementById("start").style.display="none";
+    start();
+};
+
+function start(){
+    running=true;
+
+    window.addEventListener("deviceorientation",e=>{
+        gamma = e.gamma - neutral;
+    });
+
+    window.addEventListener("devicemotion",e=>{
+        accelZ = e.accelerationIncludingGravity.z;
+    });
+
+    setTimeout(()=>neutral=gamma,300);
+    loop();
+}
+
+// ================== LOOP ==================
+function loop(){
+    if(!running) return;
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// ================== UPDATE ==================
+function update(){
+    score++;
+    document.getElementById("hud").innerText="Score: "+score;
+
+    // equilíbrio
+    bike.angle = gamma*0.03;
+    if(Math.abs(bike.angle)>0.9) end();
+
+    // posição relativa na rampa
+    const dx = bike.x() - ramp.x;
+
+    let onRamp = dx>0 && dx<ramp.width;
+
+    if(!bike.air){
+        if(onRamp){
+            // sobe a rampa
+            const progress = dx / ramp.width;
+            bike.y = groundY() - progress * ramp.height;
+
+            // salto só na subida
+            if(accelZ < -12){
+                bike.vy = -14;
+                bike.air = true;
+            }
+        }else{
+            bike.y = groundY();
+        }
+    }
+
+    // física aérea
+    if(bike.air){
+        bike.vy += 0.9;
+        bike.y += bike.vy;
+
+        // controle aéreo
+        if(gamma > 10) bike.rot += 0.05;
+        if(gamma < -10) bike.rot -= 0.05;
+
+        // pouso
+        if(bike.y >= groundY()){
+            bike.y = groundY();
+            bike.air = false;
+
+            // punição por rotação excessiva
+            if(Math.abs(bike.rot) > 0.7) end();
+            bike.rot = 0;
+        }
+    }
+}
+
+// ================== DRAW ==================
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // chão
+    ctx.strokeStyle="#555";
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.moveTo(0, groundY());
+    ctx.lineTo(canvas.width, groundY());
+    ctx.stroke();
+
+    // rampa real
+    ctx.strokeStyle="#ff6600";
+    ctx.beginPath();
+    ctx.moveTo(ramp.x, groundY());
+    ctx.lineTo(ramp.x+ramp.width, groundY()-ramp.height);
+    ctx.stroke();
+
+    // moto
+    ctx.save();
+    ctx.translate(bike.x(), bike.y);
+    ctx.rotate(bike.angle + bike.rot);
+    ctx.fillStyle="white";
+    ctx.fillRect(-25,-10,50,20);
+    ctx.restore();
+}
+
+// ================== END ==================
+function end(){
+    running=false;
+    alert("Game Over | Score: "+score);
+    location.reload();
+}
+</script>
+
+</body>
+</html>
